@@ -13,8 +13,11 @@ library(tidyverse)
 
 ## Accessing the API
 ```{r}
-query_function <- function(subject, set.name, pokemon.name, sort.by) {
-  data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name,"%20name:", pokemon.name, "&orderBy:", sort.by)
+query_function <- function(subject, set.name = "", pokemon.name = "", sort.by = "number", select = NULL) {
+  if(set.name == ""){ 
+    data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=name:", pokemon.name, "&orderBy:", sort.by, select) 
+  } else {
+  data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name,"%20name:", pokemon.name, "&orderBy:", sort.by, select) }
 info <- httr::GET(url=data_url)
 parsed = jsonlite::fromJSON(rawToChar(info$content))
 queried_data = as.tibble(parsed$data)
@@ -23,9 +26,57 @@ return(queried_data)
 ```
 
 
-# Example using the function
-This will return all Mew cards from the TCG set "Celebrations" sorted by number
+### Example using the function
+This will return all Mew cards from the Celebrations set, sorted by card number
 ```{r}
-query_function("cards", "celebrations","mew","number")
+query_function(subject = "cards", set.name = "celebrations", pokemon.name = "mew", sort.by = "number")
 ```
+
+
+### another type of data able to be accessed 
+This will return all the different types of cards, sorted by name
+```{r}
+query_function(subject = "types", sort.by = "name")
+```
+
+### Using select
+This will return all Pikachu cards in the Base set, specifically calling for the inclusion of the column of card rarity.
+```{r}
+raritycall = query_function("cards", set.name = "Base", pokemon.name = "Pikachu", select = c("rarity"))
+
+#calling the selected column to show
+raritycall$rarity
+```
+
+
+## Know How to Summarize the Data
+This is a summary of the Yveltal cards in the set XY based on artist
+```{r}
+contingency_data = query_function("cards", set.name = "XY", pokemon.name = "Yveltal")
+cont_table = table(contingency_data$name, contingency_data$artist)
+cont_table
+```
+Based on this table, we can see that 5ban Graphics did most of the artwork for this set's Yveltal cards, doing 5 out of 8.
+
+Doing another table, we can see the breakdown of what type of card this artwork was used on
+```{r}
+cont_table2 = table(contingency_data$name,contingency_data$set$name)
+cont_table2
+```
+Looks like the 5ban Graphics artwork was used on the promotional cards for this set, while the other 3 cards were used in the main set itself.
+
+
+#Let's look at one more contingency table for something different
+looking at the fast attack for each Yveltal card in every set
+```{r}
+# first break down the attacks column to only include the first attack
+contingency_attacks = sapply(contingency_data$attacks, function(x) {
+  if (!is.null(x)) { x$name[1] } else { NA }
+}) # use sapply so that just the first row is taken from each row in the attacks data frame
+cont_table = table(contingency_data$name, contingency_attacks)
+cont_table
+```
+
+
+
 
