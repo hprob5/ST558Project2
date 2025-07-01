@@ -1,0 +1,31 @@
+---
+title: "ST 558 Project 2"
+author: "Holly Probasco"
+format: pdf
+editor: visual
+---
+
+## Libraries
+```{r}
+library(tidyverse)
+```
+
+
+## Accessing the API
+```{r}
+query_function <- function(subject, set.name, pokemon.name, sort.by) {
+  data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name,"%20name:", pokemon.name, "&orderBy:", sort.by)
+info <- httr::GET(url=data_url)
+parsed = jsonlite::fromJSON(rawToChar(info$content))
+queried_data = as.tibble(parsed$data)
+return(queried_data)
+}
+```
+
+
+# Example using the function
+This will return all Mew cards from the TCG set "Celebrations" sorted by number
+```{r}
+query_function("cards", "celebrations","mew","number")
+```
+
