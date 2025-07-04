@@ -8,6 +8,7 @@ editor: visual
 ## Libraries
 ```{r}
 library(tidyverse)
+library(ggplot2)
 ```
 
 
@@ -16,6 +17,8 @@ library(tidyverse)
 query_function <- function(subject, set.name = "", pokemon.name = "", sort.by = "number", select = NULL) {
   if(set.name == ""){ 
     data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=name:", pokemon.name, "&orderBy:", sort.by, select) 
+  } else if(pokemon.name == "") {
+    data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name, "&orderBy:", sort.by, select)
   } else {
   data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name,"%20name:", pokemon.name, "&orderBy:", sort.by, select) }
 info <- httr::GET(url=data_url)
@@ -50,6 +53,7 @@ raritycall$rarity
 
 
 ## Know How to Summarize the Data
+### You should create some contingency tables
 This is a summary of the Yveltal cards in the set XY based on artist
 ```{r}
 contingency_data = query_function("cards", set.name = "XY", pokemon.name = "Yveltal")
@@ -66,8 +70,7 @@ cont_table2
 Looks like the 5ban Graphics artwork was used on the promotional cards for this set, while the other 3 cards were used in the main set itself.
 
 
-#Let's look at one more contingency table for something different
-looking at the fast attack for each Yveltal card in every set
+Let's look at one more contingency table for something different, the fast attack for each Yveltal card 
 ```{r}
 # first break down the attacks column to only include the first attack
 contingency_attacks = sapply(contingency_data$attacks, function(x) {
@@ -77,6 +80,43 @@ cont_table = table(contingency_data$name, contingency_attacks)
 cont_table
 ```
 
+### create numerical summaries for some quantitative variables at each setting of some of your categorical variables
+we can do this using the summarize function. Lets look through every released Charizard card across all sets, and compare how much Health Points they all have
+```{r}
+Char_data <- as.data.frame(query_function("cards", pokemon.name = "Charizard"))
+numsum_data <- 
+  Char_data |> 
+  group_by(setname = set$name) |> #group by set to take the mean of all cards in one set
+    summarize(cardcount = n(), meanhp = mean(as.numeric(hp),na.rm=TRUE), medianhp = median(as.numeric(hp),na.rm=TRUE), sdhp = sd(as.numeric(hp), na.rm = TRUE), IQRhp = IQR(as.numeric(hp), na.rm = TRUE))
+numsum_data |> arrange(desc(numsum_data$meanhp))
+```
+This shows that the largest meanhp for Charizard is 330 in 4 different sets, whereas the smallest is only 80 hp in the Team Rocket set. This is an older set, so this makes sense.
 
+### Create at least four plots
+#### Plot 1 
+shows all Charizard cards by set, with mean hp over 200, as well as only including sets with more than 1 card
+```{r}
+plot1_data <- numsum_data |> filter(cardcount > 1 & meanhp > 200) 
+ggplot(plot1_data, aes(x = setname, y = cardcount)) + geom_col(fill = "red") + coord_flip() + labs(x = "Set Name", x = "Card Count", title = "Charizard popularity in sets")
+```
+From this graph it looks like Charizard is popular enough to be consistently included in sets that are released.
+
+
+#### Plot 2
+This plot is of the damage counters of the Fast attack of each Charizard card, faceted by type
+```{r}
+# for easier plotting, create smaller data frame with just the needed information
+type <- sapply(Char_data$types, function(x) {
+  if (!is.null(x) && length(x) < 2) { x[1] } else { NA } 
+})
+
+chplotdata = data.frame(Pokemon = Char_data$name, type = type, hp = Char_data$hp, rarity = Char_data$rarity, cost = Char_data$tcgplayer$prices$holofoil$high)
+
+chplot <- ggplot(chplotdata |> drop_na(type, cost) , aes(x = cost, y = hp, color = type))
+
+chplot + geom_point() +
+geom_smooth(method = lm) +
+theme_light()
+```
 
 
