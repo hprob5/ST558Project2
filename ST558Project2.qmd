@@ -9,18 +9,31 @@ editor: visual
 ```{r}
 library(tidyverse)
 library(ggplot2)
+library(ggpattern)
+library(magick)
 ```
 
 
 ## Accessing the API
 ```{r}
-query_function <- function(subject, set.name = "", pokemon.name = "", sort.by = "number", select = NULL) {
-  if(set.name == ""){ 
-    data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=name:", pokemon.name, "&orderBy:", sort.by, select) 
-  } else if(pokemon.name == "") {
-    data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name, "&orderBy:", sort.by, select)
+query_function <- function(subject, set.name = "", pokemon.name = "", sort.by = "number", select = NULL){
+    
+#need an if statement for select piece because there are many values it can take that have different formats
+  selected <- if (!is.null(select)) {
+    paste0("&select=", paste(select, collapse = ","))
+  } else { "" }
+
+#set up main conditional statement for querying
+  if (set.name == "" && pokemon.name == "") {
+    data_url <- paste0("https://api.pokemontcg.io/v2/", subject, "?orderBy=", sort.by, selected)
+  } else if (set.name == "") {
+    data_url <- paste0("https://api.pokemontcg.io/v2/", subject, "?q=name:", pokemon.name, "&orderBy=", sort.by, selected)
+  } else if (pokemon.name == "") {
+    data_url <- paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name, "&orderBy=", sort.by, selected)
   } else {
-  data_url = paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name,"%20name:", pokemon.name, "&orderBy:", sort.by, select) }
+    data_url <- paste0("https://api.pokemontcg.io/v2/", subject, "?q=set.name:", set.name, "%20name:", pokemon.name, "&orderBy=", sort.by, selected)
+  }
+
 info <- httr::GET(url=data_url)
 parsed = jsonlite::fromJSON(rawToChar(info$content))
 queried_data = as.tibble(parsed$data)
@@ -42,15 +55,34 @@ This will return all the different types of cards, sorted by name
 query_function(subject = "types", sort.by = "name")
 ```
 
-### Using select
+### Using select for data type number 3
 This will return all Pikachu cards in the Base set, specifically calling for the inclusion of the column of card rarity.
 ```{r}
 raritycall = query_function("cards", set.name = "Base", pokemon.name = "Pikachu", select = c("rarity"))
 
-#calling the selected column to show
+#calling the selected column to show the rarity
 raritycall$rarity
 ```
 
+### Type number 4
+you can access just the different sets in the TCG, with all of their information as well
+```{r}
+query_function("sets")
+```
+
+
+### Type number 5
+You can return just a certain pokemon, in all sets
+```{r}
+Char_data <- query_function("cards", pokemon.name = "Charizard") # named to be used later
+Char_data
+```
+
+### Type number 6
+this shows what kinds of playable cards are included in the generations set (though all sets will include these same 3 supertypes)
+```{r}
+query_function("supertypes", set.name = "generations")
+```
 
 ## Know How to Summarize the Data
 ### You should create some contingency tables
@@ -83,40 +115,97 @@ cont_table
 ### create numerical summaries for some quantitative variables at each setting of some of your categorical variables
 we can do this using the summarize function. Lets look through every released Charizard card across all sets, and compare how much Health Points they all have
 ```{r}
-Char_data <- as.data.frame(query_function("cards", pokemon.name = "Charizard"))
-numsum_data <- 
-  Char_data |> 
+numsum_data <- as.data.frame(Char_data) |> 
   group_by(setname = set$name) |> #group by set to take the mean of all cards in one set
     summarize(cardcount = n(), meanhp = mean(as.numeric(hp),na.rm=TRUE), medianhp = median(as.numeric(hp),na.rm=TRUE), sdhp = sd(as.numeric(hp), na.rm = TRUE), IQRhp = IQR(as.numeric(hp), na.rm = TRUE))
 numsum_data |> arrange(desc(numsum_data$meanhp))
 ```
 This shows that the largest meanhp for Charizard is 330 in 4 different sets, whereas the smallest is only 80 hp in the Team Rocket set. This is an older set, so this makes sense.
 
-### Create at least four plots
-#### Plot 1 
+## Create at least four plots
+### Plot 1
 shows all Charizard cards by set, with mean hp over 200, as well as only including sets with more than 1 card
-```{r}
-plot1_data <- numsum_data |> filter(cardcount > 1 & meanhp > 200) 
-ggplot(plot1_data, aes(x = setname, y = cardcount)) + geom_col(fill = "red") + coord_flip() + labs(x = "Set Name", x = "Card Count", title = "Charizard popularity in sets")
+uses the libraries ggpattern and magick, extensions of ggplot where you can add images to the graph. I used this to add the logo for each set to it's bar on the graph
+```{r, message=FALSE}
+logos <- c(
+  file.path(getwd(), "UB.png"),
+  file.path(getwd(), "PF.jpeg"),
+  file.path(getwd(), "OBF.png"),
+  file.path(getwd(), "FF.jpeg"),
+  file.path(getwd(), "DA.png"),
+  file.path(getwd(), "CZ.jpg"),
+  file.path(getwd(), "CE.jpg"),
+  file.path(getwd(), "CP.jpeg"),
+  file.path(getwd(), "ST.jpeg"),
+  file.path(getwd(), "ST.jpeg"),
+  file.path(getwd(), "FO.jpg")
+)
+
+plot1_data <- numsum_data |> filter(cardcount > 1 & meanhp > 200 & !grepl("Promo", setname, ignore.case = TRUE)) # using grep1 to remove promo sets so only main sets show in the graph
+
+#Matching title to path
+logo_list <- c("Unbroken Bonds" = "UB.png", "Paldean Fates" = "PF.jpeg", "Obsidian Flames" = "OBF.png", "Flashfire" = "FF.jpeg", "Darkness Ablaze" = "DA.png", "Crown Zenith" = "CZ.jpg", "Cosmic Eclipse" = "CE.jpg", "Champion's Path" = "CP.jpeg", "Burning Shadows" = "BS.jpeg", "Brilliant Stars" = "ST.jpeg", "151" = "FO.jpg")
+
+#Assigns image file paths to the plotting file
+plot1_data$pattern_filename <- file.path(getwd(), logo_list[plot1_data$setname])
+
+# have to make it a factor with levels in row order so that the images match with the right row
+plot1_data$pattern_filename <- factor(plot1_data$pattern_filename, levels = plot1_data$pattern_filename)
+
+ggplot(plot1_data, aes(x = setname, y = cardcount)) +
+  geom_bar_pattern(
+    stat = "identity",
+    aes(pattern_filename = pattern_filename),
+    pattern = 'image',
+    pattern_type = 'fit',
+    fill = 'grey80',
+    colour = 'black',
+    pattern_scale = 1.3,
+    pattern_gravity = 'east'
+  ) +
+  scale_pattern_filename_discrete(choices = levels(plot1_data$pattern_filename)) +
+  coord_flip() +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = 'none') + 
+  labs(title = "Charizard Cards in Sets Released")
 ```
 From this graph it looks like Charizard is popular enough to be consistently included in sets that are released.
 
-
 #### Plot 2
-This plot is of the damage counters of the Fast attack of each Charizard card, faceted by type
+This plot is of the difference in price between the most recent set series in the data vs the oldest
 ```{r}
 # for easier plotting, create smaller data frame with just the needed information
 type <- sapply(Char_data$types, function(x) {
   if (!is.null(x) && length(x) < 2) { x[1] } else { NA } 
 })
 
-chplotdata = data.frame(Pokemon = Char_data$name, type = type, hp = Char_data$hp, rarity = Char_data$rarity, cost = Char_data$tcgplayer$prices$holofoil$high)
+chplotdata = data.frame(Pokemon = Char_data$name, type = type, hp = Char_data$hp, rarity = Char_data$rarity, cost = Char_data$tcgplayer$prices$holofoil$mid, series = Char_data$set$series, set = Char_data$set$name, setsize = Char_data$set$total)
 
-chplot <- ggplot(chplotdata |> drop_na(type, cost) , aes(x = cost, y = hp, color = type))
-
-chplot + geom_point() +
-geom_smooth(method = lm) +
-theme_light()
+ggplot(chplotdata |> drop_na(type, cost) |> filter(series %in% c("Base", "Scarlet & Violet")), aes(x = series, y = cost, fill = series))  + geom_boxplot() + geom_jitter(width = 0.2, alpha = 0.2) + labs(title = "Base vs. Scarlet & Violet Cost")
 ```
+Based on this graph, it looks like overall the older Charizard cards are noticibly more expensive than new cards, which implies that collectibility is more important in the long run than playbility, as only new cards are able to be used in the actual game
+
+
+## Plot 3
+Though these plots usually aren't usually ideal, I really like looking at them!
+This graph shows cost by rarity over all the sets, comparing against the size of each set 
+```{r}
+ggplot(chplotdata |> drop_na(rarity, cost), aes(x = setsize, y = cost)) +  geom_text(aes(label = rarity)) + labs(title = "Cost by Rarity Level and Size of Set")
+```
+Looks like there is a clear most expensive Charizard card that is a Rare Holo Star rarity tier, and there doesn't seem visually to be any correlation between the size of the set and how expensize a card from that set would be
+
+
+```{r}
+all_cards <- query_function(subject = "cards", sort.by = "set", select = c("name", "artist", "set"))
+
+plot4_data <- all_cards |> drop_na(artist) |> filter(set$name %in% c("Base", "Jungle", "Fossil"))
+
+ggplot(plot4_data, aes(x = artist, fill = set$name)) +
+  geom_bar(position = "stack") +
+  labs( title = "Number of Cards per Artist", x = "Artist", y = "Number of Cards", fill = "Set" )
+```
+This graph shows that Ken Sugimori was the artist that made the most cards in the first 3 sets ever released - he knew what he was doing! Though in the 3rd, Kagemaru Himeno and Mitsuhiro Arita both made a bit more than him.
+
+
 
 
