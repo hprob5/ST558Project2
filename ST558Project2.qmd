@@ -136,7 +136,7 @@ logos <- c(
   file.path(getwd(), "CZ.jpg"),
   file.path(getwd(), "CE.jpg"),
   file.path(getwd(), "CP.jpeg"),
-  file.path(getwd(), "ST.jpeg"),
+  file.path(getwd(), "BS.jpeg"),
   file.path(getwd(), "ST.jpeg"),
   file.path(getwd(), "FO.jpg")
 )
@@ -207,5 +207,6 @@ ggplot(plot4_data, aes(x = artist, fill = set$name)) +
 This graph shows that Ken Sugimori was the artist that made the most cards in the first 3 sets ever released - he knew what he was doing! Though in the 3rd, Kagemaru Himeno and Mitsuhiro Arita both made a bit more than him.
 
 
+## App Requirements
 
 
