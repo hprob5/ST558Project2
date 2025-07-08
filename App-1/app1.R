@@ -2,8 +2,6 @@ library(shiny)
 library(shinydashboard)
 library(DT)
 library(dplyr)
-library(purrr)
-
 
 
 # Define UI ----
@@ -85,8 +83,6 @@ ui <- dashboardPage(
   )
  )
 )
-
-
 
 # Define server logic ----
 server <- function(input, output, session) {
