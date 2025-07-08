@@ -2,6 +2,11 @@ library(shiny)
 library(shinydashboard)
 library(DT)
 library(dplyr)
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(tidyr)
+library(purrr)
 
 source("queryfunction.R")
 
