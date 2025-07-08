@@ -14,4 +14,4 @@ From About Tab: I created this app for a project for ST558 (Data Science for Sta
 lapply(c("shiny", "shinydashboard", "DT", "dplyr", "httr", "jsonlite", "ggplot2", "tidyr", "purrr"), library, character.only = TRUE)
 
 - The shiny::runGitHub() code that we can copy and paste into RStudio to run your app.
-shiny::runGitHub(repo = "ST558Project2", username = "hprob5")
+shiny::runGitHub(repo = "ST558Project2", username = "hprob5", subdir = "App-1")
