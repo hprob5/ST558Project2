@@ -11,7 +11,7 @@ From About Tab: I created this app for a project for ST558 (Data Science for Sta
 	- (dplyr)
 	
 - A line of code that would install all the packages used
-lapply(c("shiny", "shinydashboard", "DT", "dplyr"), library)
+lapply(c("shiny", "shinydashboard", "DT", "dplyr"), library, character.only = TRUE)
 
 - The shiny::runGitHub() code that we can copy and paste into RStudio to run your app.
-shiny::runGitHub(repo = "ST555Proj2", username = "hprob5")
+shiny::runGitHub(repo = "ST558Project2", username = "hprob5")
