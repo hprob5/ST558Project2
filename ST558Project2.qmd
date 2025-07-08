@@ -17,7 +17,11 @@ library(magick)
 ## Accessing the API
 ```{r}
 query_function <- function(subject, set.name = "", pokemon.name = "", sort.by = "number", select = NULL){
-    
+
+#this ensures that if a name includes a space it can still work in the function
+  pokemon.name <- URLencode(pokemon.name)
+  set.name <- URLencode(set.name)
+  
 #need an if statement for select piece because there are many values it can take that have different formats
   selected <- if (!is.null(select)) {
     paste0("&select=", paste(select, collapse = ","))

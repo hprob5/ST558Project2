@@ -1,5 +1,9 @@
 library(shiny)
 library(shinydashboard)
+library(DT)
+library(dplyr)
+
+
 
 # Define UI ----
 
@@ -9,12 +13,13 @@ ui <- dashboardPage(
   dashboardSidebar(sidebarMenu(
     #Adding in sidebar menu items for the different tabs
     menuItem("About", tabName = "About", icon = icon("dashboard")),
-    menuItem("Data Download", tabName = "Data Download", icon = icon("th")))),
+    menuItem("Data Download", tabName = "Data_Download", icon = icon("th")))),
   
-  dashboardBody(
+  dashboardBody(tabItems(
+   tabItem(tabName = "About",
     fluidRow(
       box(title = "About the App", 
-          p("I created this app for a project for ST558 at NC State. 
+          p("I created this app for a project for ST558 (Data Science for Statisticians) at NC State. 
           It is an app that pulls from a database about Pokemon TCG Cards and can return loads of information about different things
           such as what sets there are, types of Pokemon, card prices, card rarity, and so much more. Additionally, you can turn this information 
           into graphs to visually see the breakdowns. I grew up playing Pokemon on my Nintendo DS with my brother. He collected cards 
@@ -45,12 +50,115 @@ ui <- dashboardPage(
       ),
       box(tags$img(src = "TCG.png", height = "200px"))
     )
-  )
+   ),
+   tabItem(tabName = "Data_Download",
+     fluidRow(
+       box(title = "Query Options",
+          selectInput(inputId = "subject", label = "Search for:", choices = c("cards", "sets", "types"), multiple = FALSE),
+          textInput(inputId = "set_name", label = "Set Name", placeholder = "Celebrations"),
+          textInput(inputId = "pokemon_name", label = "Pokemon Name", placeholder = "Pikachu"),
+          uiOutput(outputId = "selection"),
+          actionButton(inputId = "search", "Search")
+     ),
+             
+       box(title = "Plot Output Options for Card Searches Only:",
+          selectInput("plot_type", "Choose a plot:",
+                             choices = c("Rarity Count", "Type Count", "Price by Rarity"))
+       ),
+       box(plotOutput("bargraph")), 
+    ),
+           
+   fluidRow(
+       box(title = "Search Results", DT::DTOutput("datatable"), width = NULL, collapsible = TRUE),
+       box(downloadButton("download_data", "Download data"))
+      )
+   )
+
+ )
+)
 )
 
+
 # Define server logic ----
-server <- function(input, output) {
+server <- function(input, output, session) {
   
+  queried_data <- reactiveVal() #stores reactive values
+  selected_vars <- reactiveVal() #for the subset
+  
+  observeEvent(input$search, {
+    df <- query_function(subject = input$subject, set.name = input$set_name, 
+                         pokemon.name = input$pokemon_name, select = NULL)
+    queried_data(df)
+    selected_vars(NULL)  
+  }) #reading the reactive values from the input
+  
+  output$selection <- renderUI({
+    req(queried_data())
+    selectizeInput( inputId = "select", label = "Subset the Data here (Optional)",
+      choices = names(queried_data()), selected = selected_vars(), multiple = TRUE)
+  })
+  
+  # Reactive subset of queried data
+  subsetted_data <- reactive({
+    req(queried_data(), input$select)
+    queried_data()[, input$select, drop = FALSE]
+  })
+  
+  observeEvent(input$select, {
+    selected_vars(input$select)
+  }, ignoreNULL = FALSE) # still will calculate when there are NULL values
+  #updates with each new selection
+  
+  output$datatable <- DT::renderDataTable({
+    req(subsetted_data())
+    subsetted_data()
+  }) #subsetting
+  
+  output$bargraph <- renderPlot({
+    data <- queried_data()
+    
+    if (input$plot_type == "Rarity Count") {
+      plot <- ggplot(data, aes(x = rarity)) +
+        geom_bar(fill = "blue") +
+        labs(title = "Card Rarity")
+      return(plot)
+      
+    } else if (input$plot_type == "Type Count") {
+      if ("types" %in% names(data)) {
+        types_df <- data |>
+          tidyr::unnest(types) |> count(types)
+        plot <- ggplot(types_df, aes(x = types, y = n)) +
+          geom_bar(stat = "identity", fill = "blue") +
+          labs(title = "Card Types")
+        return(plot)
+    } else { # if types isn't selected, return a message to say that
+      plot <- ggplot() + 
+        annotate("text", x = 1, y = 1, label = "Types was not a selected variable") + 
+        theme_void()
+      return(plot)
+    }
+   } else if (input$plot_type == "Price by Rarity") {
+     data$price <- sapply(data$tcgplayer, function(x) {
+       if (!is.null(x$prices$holofoil$mid)) { x$prices$holofoil$mid } else { NA }
+  })
+     data <- data |> filter(!is.na(price), !is.na(rarity))
+     
+     plot <- ggplot(data, aes(x = rarity, y = price)) +
+       geom_boxplot(fill = "blue") +
+       labs(title = "Card Price by Card Rarity", y = "Price", x = "Rarity")
+     return(plot)
+  }
+})
+  
+  
+  # Download file
+  output$download_data <- downloadHandler(
+    filename = "pokemontcg_data.csv",
+    content = function(file) {
+      write.csv(subsetted_data(), file, row.names = FALSE)
+      #so that the csv is the subsetted data, not the original
+    }
+  )
 }
 
 # Run the app ----
