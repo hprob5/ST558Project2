@@ -14,7 +14,8 @@ ui <- dashboardPage(
   dashboardSidebar(sidebarMenu(
     #Adding in sidebar menu items for the different tabs
     menuItem("About", tabName = "About", icon = icon("dashboard")),
-    menuItem("Data Download", tabName = "Data_Download", icon = icon("th")))),
+    menuItem("Data Download", tabName = "Data_Download", icon = icon("th")),
+    menuItem("Data Exploration", tabName = "Data_Exploration", icon = icon("chart-bar")))),
   
   dashboardBody(tabItems(
     tabItem(tabName = "About",
@@ -60,44 +61,56 @@ ui <- dashboardPage(
                   textInput(inputId = "pokemon_name", label = "Pokemon Name", placeholder = "Pikachu"),
                   uiOutput(outputId = "selection"),
                   actionButton(inputId = "search", "Search")
-              ),
-              
-              box(title = "Plot Output Options for Card Searches Only:",
-                  selectInput("plot_type", "Choose a plot:",
-                              choices = c("Rarity Count", "Type Count", "Price by Rarity"))
-              ),
-              box(plotOutput("bargraph")), 
-            ),
-            
+              )), # all of the query options
             fluidRow(
               box(title = "Search Results", DT::DTOutput("datatable"), width = NULL, collapsible = TRUE),
               box(downloadButton("download_data", "Download data"))
+            ) # this created a collapsible output of the searched data
+    ),
+    tabItem(tabName = "Data_Exploration", 
+        fluidRow(
+            box(title = "Variable Selection", width = 4,
+                selectInput("x", "Select X Variable:", choices = NULL),
+                uiOutput("y_ui"),  # dynamic element comes from x
+                uiOutput("faceting_ui"), # dynamic, also changes based on prev. selections
+                selectInput("summary_type", "Summary Type:",
+                            choices = c("Mean","Count")),
+                selectInput("plot_type", "Plot Type:",
+                            choices = c("Histogram","Boxplot", "Barplot", "Scatterplot"))
+            ),
+            box(title = "Summary Output", width = 8, verbatimTextOutput("summary_out")),
+            box(title = "Plot Output", width = 8, plotOutput("summary_plot"))
             )
-    )
-    
+      )
   )
-  )
+ )
 )
+
 
 
 # Define server logic ----
 server <- function(input, output, session) {
-  
+  #Data Download Tab
   queried_data <- reactiveVal() #stores reactive values
   selected_vars <- reactiveVal() #for the subset
   
+  #Query search
   observeEvent(input$search, {
     df <- query_function(subject = input$subject, set.name = input$set_name, 
-                         pokemon.name = input$pokemon_name, select = NULL)
+                         pokemon.name = input$pokemon_name, select = NULL) |> 
+      unnest_wider(tcgplayer) |> unnest_wider(prices) |> unnest_wider(holofoil) |>
+      rename("lowendprice" = "low","aboutrightprice" = "mid", "highendprice"= "high")
     queried_data(df)
     selected_vars(NULL) 
   }) #reading the reactive values from the input
+  #unnests price from the tcgplayer nested variable, bc price is very interesting to plot and it cant be nested
+   
   
   output$selection <- renderUI({
     req(queried_data())
     selectizeInput( inputId = "select", label = "Subset the Data here (Optional)",
                     choices = names(queried_data()), selected = selected_vars(), multiple = TRUE)
-  })
+  }) #these is the subset section
   
   # Reactive subset of queried data
   subsetted_data <- reactive({
@@ -115,38 +128,6 @@ server <- function(input, output, session) {
     subsetted_data()
   }) #subsetting
   
-  output$bargraph <- renderPlot({
-    data <- queried_data()
-    
-    if (input$plot_type == "Rarity Count") {
-      ggplot(data, aes(x = rarity)) +
-        geom_bar(fill = "blue") +
-        labs(title = "Card Rarity")
-      
-    } else if (input$plot_type == "Type Count") {
-      if ("types" %in% names(data)) {
-        types_df <- data |> tidyr::unnest(types) |> count(types)
-        ggplot(types_df, aes(x = types, y = n)) +
-          geom_bar(stat = "identity", fill = "blue") +
-          labs(title = "Card Types")
-      } else {
-        ggplot() + 
-          annotate("text", x = 1, y = 1, label = "Types was not a selected variable") + 
-          theme_void()
-      }
-      
-    } else if (input$plot_type == "Price by Rarity") {
-      data2 <- queried_data() |>
-        select(name, rarity, tcgplayer) |>
-        unnest_wider(tcgplayer) |> unnest_wider(prices) |> unnest_wider(holofoil)  |>
-        filter(!is.na(low) | !is.na(mid) | !is.na(high))
-      
-      ggplot(data2, aes(x = rarity, y = mid)) +
-        geom_boxplot(fill = "blue") +
-        labs(title = "Card Price by Card Rarity", y = "Price", x = "Rarity")
-    }
-  })
-  
   
   # Download file
   output$download_data <- downloadHandler(
@@ -156,7 +137,79 @@ server <- function(input, output, session) {
       #so that the csv is the subsetted data, not the original
     }
   )
-}
+ 
+  #Data Exploration Tab
+  observe({
+    req(queried_data())
+    updateSelectInput(session, "x", choices = names(queried_data()))
+  }) # X variable for graphs
+  
+  output$y_ui <- renderUI({
+    req(input$plot_type == "Scatterplot")
+    # For scatterplot only pick the y value
+    if (input$plot_type == "Scatterplot") {
+      selectInput("y", "Select Y Variable:", choices = names(queried_data()), selected = NULL)
+    } 
+  })
+  
+  #optional faceting 
+  output$faceting_ui <- renderUI({
+    req(queried_data())
+    selectInput("faceting_var", "Facet by (optional):", choices = c(None = "", names(queried_data())))
+  })
 
+  observeEvent(input$x, {
+    req(queried_data())
+    x_data <- queried_data()[[input$x]]
+  
+    if (is.numeric(x_data)) {
+      updateSelectInput(session, "summary_type", choices = c("Mean", "Count"))
+    } else {
+      updateSelectInput(session, "summary_type", choices = c("Count"))
+    }
+  }) # cant take mean of a categorical var, so this changes based on that 
+  
+output$summary_out <- renderPrint({
+  req(queried_data(), input$x, input$summary_type)
+  x <- queried_data()[[input$x]]
+  
+  if (is.numeric(x)) {
+    if (input$summary_type == "Mean") {
+      mean(x, na.rm = TRUE) #removes NAs
+    } else if (input$summary_type == "Count") {
+      length(na.omit(x)) #omits NA values from the length returned
+    }
+  } else {
+    table(x, useNA = "ifany") #will include NA values in non numerics
+  }
+})
+
+output$summary_plot <- renderPlot({
+  data <- queried_data()
+  req(data, input$x, input$plot_type)
+  
+  facet <- input$faceting_var #easier name 
+  facet_formula <- if(facet != ""){ as.formula(paste("~", facet)) } else { NULL }
+  #checks if a facet was chosen, and puts together the formula for the graph if one was
+  plot <- ggplot(data, aes_string(x = input$x))
+  
+  if (input$plot_type == "Histogram" && is.numeric(data[[input$x]])) {
+    plot <- plot + geom_histogram(binwidth = 10, fill = "purple", color = "white")
+  } else if (input$plot_type == "Boxplot" && is.numeric(data[[input$x]])) {
+    plot <- plot + geom_boxplot(fill = "pink")
+  } else if (input$plot_type == "Barplot" && !is.numeric(data[[input$x]])) {
+    plot <- plot + geom_bar(fill = "red")
+  } else if (input$plot_type == "Scatterplot" && !is.null(input$y)) {
+    plot <- ggplot(data, aes_string(x = input$x, y = input$y)) +
+      geom_point()
+  }
+  
+  if (!is.null(facet_formula)) {
+    plot <- plot + facet_wrap(facet_formula)
+  }
+  
+  plot + theme_minimal() #minimalistic theme seemed best here
+})
+}
 # Run the app ----
 shinyApp(ui = ui, server = server)
