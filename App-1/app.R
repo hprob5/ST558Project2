@@ -3,6 +3,7 @@ library(shinydashboard)
 library(DT)
 library(dplyr)
 
+source("queryfunction.R")
 
 # Define UI ----
 
