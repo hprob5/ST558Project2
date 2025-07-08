@@ -8,7 +8,7 @@ library(ggplot2)
 library(tidyr)
 library(purrr)
 
-source("queryfunction.R")
+source("query_function.R")
 
 # Define UI ----
 
